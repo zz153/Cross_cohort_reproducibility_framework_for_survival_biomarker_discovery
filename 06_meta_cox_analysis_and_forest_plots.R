@@ -108,7 +108,7 @@ sapply(meta_tbl, class)
 
 meta_tbl %>%
   dplyr::mutate(pooled_HR = as.numeric(pooled_HR)) %>%
-  write_csv("Figure7_MetaCox_results.csv")
+  write_csv("MetaCox_results.csv")
 
 
 # ============================================================
