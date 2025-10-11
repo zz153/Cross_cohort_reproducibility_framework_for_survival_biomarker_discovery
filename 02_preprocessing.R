@@ -50,6 +50,14 @@ cat("All downloads complete!\n")
 # ---------------------------------------------------
 # 4. Load CGGA expression and clinical data
 # ---------------------------------------------------
+# Source: Chinese Glioma Genome Atlas (CGGA) data portal
+# https://www.cgga.org.cn (accessed 2025-06-15)
+# Dataset: mRNAseq_693 (batch 1 + 2 combined)
+# Files:
+#   - CGGA.mRNAseq_693.Read_Counts-genes.20220620.txt
+#   - CGGA.mRNAseq_693_clinical.20200506.txt
+# Citation:
+#   Zhao Z et al., Front Oncol. 2021;11:666624. doi:10.3389/fonc.2021.666624
 
 # CGGA mRNA expression (693 samples, raw read counts)
 cgga_expr <- read.delim("CGGA.mRNAseq_693.Read_Counts-genes.20220620.txt",
