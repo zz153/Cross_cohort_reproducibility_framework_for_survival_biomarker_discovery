@@ -83,11 +83,6 @@ cat("✅ CGGA data successfully loaded and saved!\n")
 # Harmonize and extract mRNA/lncRNA matrices for TCGA, GTEx, and CGGA
 # Save harmonized counts as CSV for downstream analysis
 # ---------------------------------------------------
-
-# --- Load libraries ---
-libs <- c("SummarizedExperiment", "rtracklayer", "dplyr")
-invisible(lapply(libs, require, character.only = TRUE))
-
 # --- Load Data (from script 1 outputs) ---
 tcga_data <- readRDS("TCGA_GBM_data.rds")
 rse_brain <- readRDS("GTEx_Brain_rse.rds")
@@ -140,7 +135,6 @@ head(cgga_gbm_clin)
 # Save for downstream
 write.csv(cgga_gbm_clin, "CGGA_GBM_clinical_only.csv", row.names = FALSE)
 
-
 ## GBM Only expression matrix
 
 # 1. Get GBM sample IDs from clinical table
@@ -180,11 +174,6 @@ cgga_gbm_expr_unique <- cgga_gbm_expr_ensg %>%
   group_by(ensembl_gene_id) %>%
   summarise(across(everything(), sum), .groups = "drop")
 
-cgga_gbm_expr_unique <- cgga_gbm_expr_ensg %>%
-  select(-external_gene_name) %>%                   # drop gene symbol
-  group_by(ensembl_gene_id) %>%                     # group by Ensembl ID
-  summarise(across(everything(), sum)) %>%          # sum counts across duplicates
-  ungroup()
 
 # Embed Ensembl IDs into row names
 cgga_gbm_expr_mat <- cgga_gbm_expr_unique %>%
