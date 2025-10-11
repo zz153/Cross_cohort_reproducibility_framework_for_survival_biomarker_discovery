@@ -232,18 +232,6 @@ cat("✅ Harmonization complete! Common genes across datasets:", length(common_g
 # 3. QC and Dataset Summary
 # ---------------------------------------------------
 
-# --- Load libraries ---
-suppressPackageStartupMessages({
-  library(SummarizedExperiment)
-  library(rtracklayer)
-  library(dplyr)
-  library(tibble)
-  library(edgeR)
-  library(ggplot2)
-  library(ggpubr)
-  library(gridExtra)
-})
-
 # CPM calculator
 calc_cpm <- function(mat) {
   mat[is.na(mat)] <- 0
