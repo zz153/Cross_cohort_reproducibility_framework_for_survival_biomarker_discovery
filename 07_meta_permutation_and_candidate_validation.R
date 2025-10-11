@@ -1,0 +1,231 @@
+# ============================================================
+# 07_meta_permutation_and_candidate_validation.R
+# Permutation validation and candidate gene meta-analysis
+# ============================================================
+# Description:
+#   1️⃣ Performs meta-analysis of per-gene Cox models across TCGA and CGGA.
+#   2️⃣ Uses permutation of survival outcomes to estimate empirical discovery rate.
+#   3️⃣ Summarizes results for a defined candidate gene set (e.g., top prognostic lncRNAs).
+#
+# Inputs:
+#   - tcga_surv_input, cgga_surv_input : survival data with OS, Censor, and gene columns
+#   - candidate gene IDs (ENSEMBL)
+#
+# Outputs:
+#   - Figure7_meta_observed_all_genes.csv ........ All meta-analysis results
+#   - Figure7_meta_permutation_counts_candidates.csv ..... Null-distribution counts
+#   - Figure7_Permutation_DiscoveryHistogram_candidates.png
+#   - CandidateGenes_Cox_Meta_Table.csv
+#   - Figure7_CandidateGenes_CoxMeta_Table.png
+#
+# ============================================================
+
+suppressPackageStartupMessages({
+  library(survival); library(dplyr); library(tidyr)
+  library(purrr); library(metafor); library(ggplot2)
+  library(gt); library(readr)
+})
+
+set.seed(42)
+alpha <- 0.05
+B <- 1000  # number of permutations
+gene_start_col <- 11
+
+# ============================================================
+# 1️⃣ Identify common genes
+# ============================================================
+common_genes <- intersect(
+  colnames(tcga_surv_input)[gene_start_col:ncol(tcga_surv_input)],
+  colnames(cgga_surv_input)[gene_start_col:ncol(cgga_surv_input)]
+)
+
+has_var <- function(x) sd(x, na.rm = TRUE) > 0
+common_genes <- common_genes[
+  sapply(common_genes,
+         function(g) has_var(tcga_surv_input[[g]]) && has_var(cgga_surv_input[[g]]))
+]
+cat("Common genes used:", length(common_genes), "\n")
+
+# Clean inputs
+tcga0 <- tcga_surv_input %>%
+  select(patient, OS, Censor, all_of(common_genes)) %>%
+  filter(!is.na(OS), !is.na(Censor))
+cgga0 <- cgga_surv_input %>%
+  select(patient, OS, Censor, all_of(common_genes)) %>%
+  filter(!is.na(OS), !is.na(Censor))
+
+# ============================================================
+# 2️⃣ Core functions
+# ============================================================
+
+# Cox model per gene
+cox_one_gene <- function(dat, gene) {
+  f <- as.formula(paste0("Surv(OS, Censor) ~ ", gene))
+  fit <- try(coxph(f, data = dat), silent = TRUE)
+  if (inherits(fit, "try-error") || length(coef(fit)) == 0)
+    return(tibble(logHR = NA, SE = NA, p = NA))
+  ctab <- summary(fit)$coef[1, ]
+  tibble(
+    logHR = unname(ctab["coef"]),
+    SE    = unname(ctab["se(coef)"]),
+    p     = unname(ctab["Pr(>|z|)"])
+  )
+}
+
+# Random-effects meta between TCGA and CGGA
+meta_one_gene <- function(g, tcga, cgga) {
+  tc <- cox_one_gene(tcga, g); cg <- cox_one_gene(cgga, g)
+  if (any(is.na(tc)) || any(is.na(cg)))
+    return(tibble(gene = g, logHR_meta = NA, SE_meta = NA, p_meta = NA, I2 = NA))
+  m <- try(rma.uni(yi = c(tc$logHR, cg$logHR),
+                   sei = c(tc$SE, cg$SE),
+                   method = "DL"), silent = TRUE)
+  if (inherits(m, "try-error"))
+    return(tibble(gene = g, logHR_meta = NA, SE_meta = NA, p_meta = NA, I2 = NA))
+  tibble(
+    gene = g,
+    logHR_meta = as.numeric(m$b),
+    SE_meta = as.numeric(m$se),
+    p_meta = as.numeric(m$pval),
+    I2 = m$I2
+  )
+}
+
+# Wrapper
+run_meta_all_genes <- function(genes, tcga, cgga) {
+  map_dfr(genes, ~meta_one_gene(.x, tcga, cgga)) %>%
+    mutate(FDR = p.adjust(p_meta, method = "BH"))
+}
+
+# ============================================================
+# 3️⃣ Observed meta-analysis
+# ============================================================
+meta_obs <- run_meta_all_genes(common_genes, tcga0, cgga0)
+write_csv(meta_obs, "Figure7_meta_observed_all_genes.csv")
+
+obs_sig <- meta_obs %>% filter(FDR < alpha)
+cat("Observed significant meta-genes (FDR <", alpha, "):", nrow(obs_sig), "\n")
+
+write_csv(obs_sig, "Figure7_meta_observed_significant.csv")
+
+# ============================================================
+# 4️⃣ Permutation baseline for candidate genes
+# ============================================================
+candidate_genes <- c("ENSG00000105997","ENSG00000128710",
+                     "ENSG00000128713","ENSG00000253552",
+                     "ENSG00000250133")
+
+permute_surv <- function(df) {
+  idx <- sample.int(nrow(df))
+  df %>% mutate(OS = OS[idx], Censor = Censor[idx])
+}
+
+perm_counts <- numeric(B)
+
+for (b in seq_len(B)) {
+  tcga_b <- permute_surv(tcga0)
+  cgga_b <- permute_surv(cgga0)
+  meta_b <- run_meta_all_genes(candidate_genes, tcga_b, cgga_b)
+  perm_counts[b] <- sum(meta_b$FDR < alpha, na.rm = TRUE)
+  if (b %% 10 == 0) cat("Permutation", b, ":", perm_counts[b], "discoveries\n")
+}
+
+write_csv(data.frame(iter = 1:B, n_sig = perm_counts),
+          "Figure7_meta_permutation_counts_candidates.csv")
+
+# ============================================================
+# 5️⃣ Empirical significance
+# ============================================================
+meta_obs_cand <- run_meta_all_genes(candidate_genes, tcga0, cgga0)
+n_obs <- sum(meta_obs_cand$FDR < alpha, na.rm = TRUE)
+emp_p <- (sum(perm_counts >= n_obs) + 1) / (B + 1)
+
+cat("Observed candidate discoveries:", n_obs, "\n")
+cat("Mean null discoveries:", mean(perm_counts), "±", sd(perm_counts), "\n")
+cat("Empirical p-value:", signif(emp_p, 3), "\n")
+
+# Histogram
+png("Figure7_Permutation_DiscoveryHistogram_candidates.png", 1200, 900, res = 150)
+hist(perm_counts, breaks = 20, col = "skyblue", border = "grey40",
+     xlab = "# significant candidate genes (FDR < 0.05)",
+     main = "Permutation baseline (candidate genes)")
+abline(v = n_obs, lwd = 3, col = "red")
+legend("topright",
+       legend = c(paste("Observed =", n_obs),
+                  paste("Mean null =", round(mean(perm_counts),1)),
+                  paste("Empirical p =", signif(emp_p,3))),
+       bty = "n")
+dev.off()
+
+# ============================================================
+# 6️⃣ Detailed candidate table (TCGA, CGGA, pooled)
+# ============================================================
+cox_one <- function(df, gene) {
+  f <- as.formula(paste0("Surv(OS, Censor) ~ `", gene, "`"))
+  fit <- coxph(f, data = df)
+  s <- summary(fit); ci <- exp(confint(fit))
+  tibble(
+    gene = gene,
+    HR = exp(s$coef[1, "coef"]),
+    HR_lo = ci[1, 1], HR_hi = ci[1, 2],
+    p = s$coef[1, "Pr(>|z|)"],
+    beta = s$coef[1, "coef"]
+  )
+}
+
+meta_from_two <- function(tc, cg) {
+  m <- rma.uni(yi = c(tc$beta, cg$beta), sei = c(tc$SE, cg$SE), method = "DL")
+  tibble(
+    gene = tc$gene,
+    meta_HR = exp(m$b), meta_lo = exp(m$ci.lb), meta_hi = exp(m$ci.ub),
+    meta_p = m$pval
+  )
+}
+
+# Run for each candidate
+tcga_cox <- map_dfr(candidate_genes, ~cox_one(tcga0, .x)) %>% rename_with(~paste0("TCGA_", .), -gene)
+cgga_cox <- map_dfr(candidate_genes, ~cox_one(cgga0, .x)) %>% rename_with(~paste0("CGGA_", .), -gene)
+
+meta_tbl <- map_dfr(candidate_genes, function(g) {
+  tc <- tcga_cox %>% filter(gene == g)
+  cg <- cgga_cox %>% filter(gene == g)
+  meta_from_two(tc, cg)
+})
+
+# Assemble final table
+tab <- tcga_cox %>%
+  left_join(cgga_cox, by = "gene") %>%
+  left_join(meta_tbl, by = "gene") %>%
+  mutate(
+    meta_FDR = p.adjust(meta_p, method = "BH"),
+    dir_consist = ifelse(sign(TCGA_beta) == sign(CGGA_beta), "Yes", "No")
+  ) %>%
+  mutate(
+    across(c(TCGA_HR, CGGA_HR, meta_HR), round, 2),
+    across(ends_with(c("lo","hi")), round, 2),
+    across(ends_with(c("_p","_FDR")), ~signif(., 3))
+  ) %>%
+  transmute(
+    Gene = gene,
+    `TCGA HR (95% CI)` = sprintf("%0.2f (%0.2f–%0.2f)", TCGA_HR, TCGA_HR_lo, TCGA_HR_hi),
+    `TCGA p` = TCGA_p,
+    `CGGA HR (95% CI)` = sprintf("%0.2f (%0.2f–%0.2f)", CGGA_HR, CGGA_HR_lo, CGGA_HR_hi),
+    `CGGA p` = CGGA_p,
+    `Meta HR (95% CI)` = sprintf("%0.2f (%0.2f–%0.2f)", meta_HR, meta_lo, meta_hi),
+    `Meta p` = meta_p,
+    `Meta FDR` = meta_FDR,
+    `Same direction?` = dir_consist
+  )
+
+write_csv(tab, "CandidateGenes_Cox_Meta_Table.csv")
+
+# Optional: pretty table for manuscript
+gt_tab <- gt(tab) %>%
+  tab_header(title = "Cox hazard ratios and meta-analysis for candidate genes") %>%
+  fmt_markdown(columns = everything()) %>%
+  tab_style(style = cell_text(weight = "bold"),
+            locations = cells_column_labels(everything()))
+
+gtsave(gt_tab, "Figure7_CandidateGenes_CoxMeta_Table.png", vwidth = 1400, vheight = 600)
+
+cat("\n✅ Permutation and candidate validation completed successfully.\n")
