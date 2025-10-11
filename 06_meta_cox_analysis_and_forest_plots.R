@@ -21,12 +21,6 @@
 #   Packages: dplyr, purrr, tidyr, survival, metafor, ggplot2, stringr, readr
 # ============================================================
 
-suppressPackageStartupMessages({
-  library(dplyr); library(purrr); library(tidyr)
-  library(survival); library(metafor)
-  library(ggplot2); library(stringr); library(readr)
-})
-
 cat("\n📈 Running cross-cohort Cox meta-analysis...\n")
 
 # ============================================================
@@ -110,7 +104,12 @@ meta_tbl <- map_dfr(genes_of_interest, meta_one_gene) %>%
   mutate(meta_FDR = p.adjust(meta_p, method = "BH")) %>%
   arrange(meta_FDR)
 
-write_csv(meta_tbl, "Figure7_MetaCox_results.csv")
+sapply(meta_tbl, class)
+
+meta_tbl %>%
+  dplyr::mutate(pooled_HR = as.numeric(pooled_HR)) %>%
+  write_csv("Figure7_MetaCox_results.csv")
+
 
 # ============================================================
 # 4️⃣ Select genes for visualization
