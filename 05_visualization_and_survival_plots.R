@@ -73,11 +73,6 @@ for (g in overlap_genes) {
 ##--------------------------------------------------------------------##
 ##                                    Bar plot.                       ##
 ##--------------------------------------------------------------------##
-library(ggplot2)
-library(dplyr)
-library(tibble)
-library(tidyr)
-
 
 # Build long expression dataframe for one gene at a time
 make_expr_df <- function(gene_id) {
@@ -139,9 +134,6 @@ for (g in overlap_genes) {
 ##                                    Box plot.                       ##
 ##--------------------------------------------------------------------##
 
-library(ggplot2)
-library(dplyr)
-
 # Build long expression dataframe
 make_expr_df <- function(gene_id) {
   tcga_tum <- data.frame(gene = gene_id, expr = tcga_cpm[gene_id, tumor_samples], group = "TCGA_tumor")
@@ -190,11 +182,6 @@ for (g in overlap_genes) {
          plot = p, width = 5, height = 5)
 }
 
-library(ggplot2)
-library(dplyr)
-
-
-
 # Build expression dataframe for one gene at a time
 make_expr_df <- function(gene_id) {
   tcga_tum <- data.frame(gene = gene_id, expr = tcga_cpm[gene_id, tumor_samples], group = "TCGA_tumor")
@@ -240,18 +227,9 @@ for (g in overlap_genes) {
   )
 }
 
-
 overlap_genes %in% colnames(tcga_surv_input)
 table(tcga_surv_input$Censor)
 tcga_surv_input$Censor <- ifelse(tcga_surv_input$Censor == 1, 0, 1)
-
-
-
-library(survival)
-library(survminer)
-library(dplyr)
-library(ggplot2)
-library(gridExtra)
 
 plot_survival_tertile <- function(df, gene_id, cohort_name) {
   if (!gene_id %in% colnames(df)) {
@@ -307,7 +285,6 @@ print(robust_summary)
 
 # Genes of interest
 overlap_genes <- robust_summary$gene
-
 
 # Cohorts to run
 cohorts <- list(
