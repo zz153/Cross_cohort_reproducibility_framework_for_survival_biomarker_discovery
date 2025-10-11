@@ -3,7 +3,6 @@
 # Differential Gene Expression Analysis (Tumor vs. Normal)
 # ============================================================
 
-
 # ------------------------------
 # Load inputs
 # ------------------------------
@@ -27,7 +26,6 @@ all_expr <- cbind(tcga_tumor_expr, tcga_normal_expr, gtex_expr)
 # ------------------------------
 # Pool TCGA + GTEx normals
 # ------------------------------
-
 group <- factor(c(
   rep("Tumor", ncol(tcga_tumor_expr)),
   rep("Normal", ncol(tcga_normal_expr) + ncol(gtex_expr))
@@ -363,8 +361,6 @@ genes_cgga <- colnames(cgga_surv_input)[11:ncol(cgga_surv_input)]
 identical(genes_tcga, genes_cgga)   # should return TRUE
 
 ## FIGURE 2A PANEL ##
-
-library(ggplot2)
 
 library(ggrepel)
 
